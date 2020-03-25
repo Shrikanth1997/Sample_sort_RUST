@@ -62,9 +62,10 @@ fn main() {
 
 fn read_size(file: &mut File) -> u64 {
     // TODO: Read size field from data file
+    file.seek(SeekFrom::Start(0)).unwrap();
     let mut buf = [0u8];
-    file.read(&mut buf).unwrap();
-    //println!("{:?}\n", buf[0]);
+    file.read_exact(&mut buf).unwrap();
+    //println!("Size: {:?}\n", buf[0]);
     let size1 = buf[0] as u64;
     size1
 }
@@ -72,7 +73,7 @@ fn read_size(file: &mut File) -> u64 {
 fn read_item(file: &mut File, ii: u64) -> f32 {
     // TODO: Read the ii'th float from data file
     //let size1 = read_size(&mut file);
-    file.seek(SeekFrom::Start(8)).unwrap();
+    file.seek(SeekFrom::Start(0)).unwrap();
     let item1 = 0f32;
     let mut tmp = [0u8;4];
     file.seek(SeekFrom::Start(8 + ii*4)).unwrap();
@@ -84,24 +85,17 @@ fn read_item(file: &mut File, ii: u64) -> f32 {
 
 fn sample(file: &mut File, count: usize, size: u64) -> Vec<f32> {
     let mut rng = rand::thread_rng();
-    let mut rand_items = vec![];
     let mut sample = vec![];
-
+    
     // TODO: Sample 'count' random items from the
     // provided file
-    let sample_size = 3 * (count - 1);
-    for i in 0..sample_size{
-        let jj = rng.gen_range(0,sample_size);
+    for i in 0..count{
+        let jj = rng.gen_range(0,count);
+        println!("jj: {:?}", jj);
         let j = jj as u64;
-        rand_items [i] = read_item(file,j);
+        sample.push(read_item(file,j));
     }
-
-    rand_items.sort_by(|a, b| a.partial_cmp(b).unwrap());
-
-    
-
-
-
+    println!("Samples: {:?}", sample);
     sample
 }
 
@@ -109,10 +103,19 @@ fn find_pivots(file: &mut File, threads: usize) -> Vec<f32> {
     // TODO: Sample 3*(threads-1) items from the file
     // TODO: Sort the sampled list
     let mut pivots = vec![0f32];
+    let mut rand_items = vec![0f32];
+    let file_len = read_size(file);
+    
+    rand_items = sample(file, 3*(threads-1), file_len);
+    rand_items.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
     // TODO: push the pivots into the array
-
+    
+    for i in (1..rand_items.len()).step_by(3){
+        pivots.push(rand_items[i]);
+    }
     pivots.push(f32::INFINITY);
+    println!("Pivots: {:?}", pivots);
     pivots
 }
 
