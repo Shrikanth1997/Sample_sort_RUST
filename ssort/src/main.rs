@@ -1,5 +1,6 @@
 
 extern crate rand;
+extern crate bytes;
 use rand::Rng;
 
 use std::env;
@@ -63,10 +64,9 @@ fn main() {
 fn read_size(file: &mut File) -> u64 {
     // TODO: Read size field from data file
     file.seek(SeekFrom::Start(0)).unwrap();
-    let mut buf = [0u8];
+    let mut buf = [0u8;8];
     file.read_exact(&mut buf).unwrap();
-    //println!("Size: {:?}\n", buf[0]);
-    let size1 = buf[0] as u64;
+    let size1 = Cursor::new(buf).get_u64_le();
     size1
 }
 
@@ -74,7 +74,7 @@ fn read_item(file: &mut File, ii: u64) -> f32 {
     // TODO: Read the ii'th float from data file
     //let size1 = read_size(&mut file);
     file.seek(SeekFrom::Start(0)).unwrap();
-    let item1 = 0f32;
+    let _item1 = 0f32;
     let mut tmp = [0u8;4];
     file.seek(SeekFrom::Start(8 + ii*4)).unwrap();
     file.read_exact(&mut tmp).unwrap();
@@ -89,13 +89,13 @@ fn sample(file: &mut File, count: usize, size: u64) -> Vec<f32> {
     
     // TODO: Sample 'count' random items from the
     // provided file
-    for i in 0..count{
-        let jj = rng.gen_range(0,count);
-        println!("jj: {:?}", jj);
+    for _i in 0..count{
+        let jj = rng.gen_range(0,size);
+        //println!("jj: {:?}", jj);
         let j = jj as u64;
         sample.push(read_item(file,j));
     }
-    println!("Samples: {:?}", sample);
+    //println!("Samples: {:?}", sample);
     sample
 }
 
@@ -115,7 +115,7 @@ fn find_pivots(file: &mut File, threads: usize) -> Vec<f32> {
         pivots.push(rand_items[i]);
     }
     pivots.push(f32::INFINITY);
-    println!("Pivots: {:?}", pivots);
+    //println!("Pivots: {:?}", pivots);
     pivots
 }
 
@@ -123,39 +123,71 @@ fn worker(tid: usize, inp_path: String, out_path: String, pivots: Vec<f32>,
           sizes: Arc<Mutex<Vec<u64>>>, bb: Arc<Barrier>) {
 
     // TODO: Open input as local fh
+    let mut inpf = File::open(inp_path).unwrap();
 
     // TODO: Scan to collect local data
-    let data = vec![0f32, 1f32];
+    let mut data = vec![];
+    let file_size = read_size(&mut inpf);
+    //println!("size: {}", file_size);
+
+    for i in 0..file_size{
+        let x = read_item(&mut inpf,i);
+        if x>pivots[tid] && x<=pivots[tid+1] {
+            data.push(x);
+        }
+    }
+    //println!("{}: start {:?}, count {}", tid, data, data.len());
 
     // TODO: Write local size to shared sizes
-    /*{
+    {
+        let mut size_un = sizes.lock().unwrap();
+        size_un[tid] = data.len() as u64;
+        //println!("Actual sizes: {:?} Tid:{}", size_un, tid);
         // curly braces to scope our lock guard
-    }*/
+    }
+    
 
     // TODO: Sort local data
+    data.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    //println!("{}: start {:?}, count {}", tid, data, data.len());
 
     // Here's our printout
     println!("{}: start {}, count {}", tid, &data[0], data.len());
 
+    bb.wait();
+
     // TODO: Write data to local buffer
-    {
-    //let mut cur = Cursor::new(vec![]);
-    //read_item
-    }
+    
+        let mut cur = Cursor::new(vec![]);
+
+        for i in &data{
+            let tmp = i.to_ne_bytes();
+            cur.write_all(&tmp).unwrap();
+        }
+    
 
     // TODO: Get position for output file
     let prev_count = {
-        // curly braces to scope our lock guard
-        5
+        let size_pos = sizes.lock().unwrap();
+        let mut start = 0u64;
+        for i in 0..(tid){
+            start = start + size_pos[i];
+        }
+        //println!("tid: {} Sizes: {}", tid, start);
+        start
     };
 
-    /*
     let mut outf = OpenOptions::new()
         .read(true)
         .write(true)
         .open(out_path).unwrap();
-    */
+    
     // TODO: Seek and write local buffer.
+    
+    outf.seek(SeekFrom::Start(8 + 4 * prev_count)).unwrap();
+    outf.write_all(cur.get_ref()).unwrap();
+    
+    
 
     // TODO: Figure out where the barrier goes.
 }
